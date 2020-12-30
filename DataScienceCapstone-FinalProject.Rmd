@@ -64,7 +64,16 @@ text <- VCorpus(VectorSource(lines))
 
 
 ```{r nGramTokenizer, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
-tdm <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 1, max = 4))))
+tdm <- TermDocumentMatrix(
+    text, 
+    control=list(
+        tokenize = function (x) NGramTokenizer(
+            x, 
+            control = Weka_control(min = 1, max = 4)
+        ),
+        wordLengths=c(1, Inf)
+    )
+)
 ```
 
 ```{r, cache=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
@@ -86,7 +95,14 @@ for (i in 2:length(ng$perc_cum)) {
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 sp <- strsplit(as.character(ng$ng), " ")
 ng$len <- sapply(sp, length)
-ng$hist <- sapply(sp, function(x) Reduce(paste, x[1:(length(x) - 1)]))
+ng$hist <- sapply(sp, function(x) {
+        if (length(x) == 1) {
+            ""
+        } else {
+            Reduce(paste, x[1:(length(x) - 1)])
+        }
+    }
+)
 ng$y <- sapply(sp, function(x) Reduce(paste, x[length(x):length(x)]))
 ```
 
@@ -140,26 +156,42 @@ b <- function (hist, k, ng, nh, fhf) {
 
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 Pbo <- function (wi, hist, k, ng, nh, fhf) {
-    Cwi <- ng$freq[ng$ng %in% paste(hist, wi) & ng$freq > k]
-    Cwh <- ng$freq[ng$ng %in% paste(hist) & ng$freq > k]
+    if (length(hist) == 1 & hist[1] == "") {
+        ph <- wi
+        Cwh <- ng$freq[ng$ng == paste(hist) & ng$freq > k]
+    } else {
+        ph <- paste(hist, wi)
+        Cwh <- ng$freq[ng$ng == paste(hist) & ng$freq > k]
+    }
+    Cwi <- c()
+    for (j in 1:length(ph)) {
+        if (ph[j] %in% ng$ng) {
+            Cwi <- c(Cwi, ng$freq[ng$ng == ph[j] & ng$freq > k])
+        } else {
+            Cwi <- c(Cwi, 0)
+        }
+    }
     dw <- d(Cwi, fhf)
     ah <- a(hist, k, ng, nh, fhf)
-    if (Cwi > k) {
-        p <- dw * Cwi / Cwh
-    } else {
-        ws <- strsplit(hist, " ")[[1]]
-        if (length(ws) > 1) {
-            hist2 <- ws[2:length(ws)]
-            pBack <- Pbo(wi, hist2, k, ng, nh, fhf)
+    p <- c()
+    for (i in 1:length(wi)) {
+        if (Cwi[i] > k & !(length(hist) == 1 & hist[1] == "")) {
+            p <- c(p, dw[i] * Cwi[i] / Cwh)
         } else {
-            n_words <- sum(ng$freq[ng$len == 1])
-            if (is.na(ng$ng[ng$ng == wi])) {
-                pBack <- dw * ng$ng[ng$ng == "UNK"]/n_words
+            ws <- strsplit(hist, " ")[[1]]
+            if (length(ws) > 1) {
+                hist2 <- ws[2:length(ws)]
+                pBack <- Pbo(wi[i], hist2, k, ng, nh, fhf)
+                p <- c(p, ah * pBack)
             } else {
-                pBack <- dw * ng$ng[ng$ng == wi]/n_words
+                n_words <- sum(ng$freq[ng$len == 1])
+                if (wi[i] %in% ng$ng) {
+                    p <- c(p, dw[i] * ng$freq[ng$ng == wi[i]]/n_words)
+                } else {
+                    p <- c(p, dw[i] * ng$freq[ng$ng == "UNK"]/n_words)
+                }
             }
         }
-        p <- ah * pBack
     }
     p
 }
@@ -173,10 +205,10 @@ a <- function (hist, k, ng, nh, fhf) {
     ws <- strsplit(hist, " ")[[1]]
     if (is.list(ws) & length(ws) > 1) {
         hist2 <- ws[2:length(ws)]
-        Pbos <- Pbo(wi, hist2, k, ng, nh, fhf)
+        Pbos <- Pbo(words, hist2, k, ng, nh, fhf)
     } else {
-        if (wi %in% ng$ng) {
-            Pbos <- ng$freq[ng$ng == wi]
+        if (any(ng$ng %in% wi)) {
+            Pbos <- ng$freq[ng$ng %in% wi]
         } else {
             Pbos <- ng$freq[ng$ng == "UNK"]
         }
