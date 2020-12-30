@@ -1,0 +1,590 @@
+---
+title: "Data Science Capstone - Milestone Report"
+author: "Daniel Contrera"
+date: "12/28/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Getting and Loading the data
+
+The following zip file contains the training data:
+https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip
+
+```{bash, eval = FALSE}
+unzip("Coursera-SwiftKey.zip")
+```
+
+There will be the following folders and files:
+```{bash, eval = FALSE}
+./Coursera-SwiftKey:
+final
+./Coursera-SwiftKey/final:
+de_DE  en_US  fi_FI  ru_RU
+./Coursera-SwiftKey/final/de_DE:
+de_DE.blogs.txt  de_DE.news.txt  de_DE.twitter.txt
+./Coursera-SwiftKey/final/en_US:
+en_US.blogs.txt  en_US.news.txt  en_US.twitter.txt
+./Coursera-SwiftKey/final/fi_FI:
+fi_FI.blogs.txt  fi_FI.news.txt  fi_FI.twitter.txt
+./Coursera-SwiftKey/final/ru_RU:
+ru_RU.blogs.txt  ru_RU.news.txt  ru_RU.twitter.txt
+```
+
+Each folder has three files blogs, new, and twitter. We are going to start using the ones from `en_US` folder which correspond to English (US).
+
+To start the exploration analysis we can open the files in a text editor, command line or load them in RStudio.
+We loaded them in RStudio because we are getting familiar with the text management in R.
+
+To perform a first exploration in the command line you can run the following:
+
+```{bash, eval = FALSE}
+# How many bytes
+Coursera-Swiftkey/final/en_US$ ls -alh 
+```
+
+ReadLines in R:
+```{r, cache = TRUE, eval = FALSE, warning = FALSE, message = FALSE}
+length(readLines("Coursera-Swiftkey/final/en_US/en_US.twitter.txt")) # 2360148
+length(readLines("Coursera-Swiftkey/final/en_US/en_US.blogs.txt")) # 899288
+length(readLines("Coursera-Swiftkey/final/en_US/en_US.news.txt")) # 1010242
+```
+
+What is the length of the longest line seen in any of the three en_US data sets? 
+```{bash, cache = TRUE, eval = TRUE}
+wc -L Coursera-Swiftkey/final/en_US/*.txt
+```
+
+<!-- ```{bash} -->
+<!-- wc −l Coursera-Swiftkey/final/en_US/en_US.twitter.txt -->
+<!-- ``` -->
+
+We will use the following function called `readText()` to read the files in R:
+
+```{r}
+readText <- function (
+    filename, 
+    nchunk = 1, 
+    MAXLINES = 3e9, 
+    words = c(), 
+    search = ""
+) {
+    nlines <- 0
+    lines <- "lines"
+    longest <- 0
+    w1 <- 0
+    w2 <- 0 
+    found <- c()
+    con <- file(filename, "r") 
+    while (length(lines) > 0 & nlines < MAXLINES) {
+        lines <- readLines(con, nchunk, ok = TRUE)
+        # print(lines)
+        longest <- max(longest, nchar(lines))
+        nlines <- nlines + length(lines)
+        if (length(words) == 2) {
+            w1 <- w1 + length(grep(words[1], lines))
+            w2 <- w2 + length(grep(words[2], lines))
+        }
+        if (nchar(search) > 0 & length(grep(search, lines))) {
+            found <- c(found, lines[grep(search, lines)])
+        }
+    }
+    close(con)
+    text <- c()
+    text$nlines <- nlines
+    text$longest <- longest
+    text$w1 <- w1
+    text$w2 <- w2
+    text$found <- found
+    text
+}
+```
+This function reads a file (in chunks and lines can be limited) and returns the 
+number of lines, the longest lines and how many words match a tuple input.
+
+```{r, cache = TRUE, eval = FALSE, warning=FALSE, message=FALSE}
+filenames <- c(
+    "Coursera-SwiftKey/final/en_US/en_US.twitter.txt",
+    "Coursera-SwiftKey/final/en_US/en_US.blogs.txt",
+    "Coursera-SwiftKey/final/en_US/en_US.news.txt"
+)
+for (f in filenames) {
+    text <- readText(f, nchunk = 1000)
+    print(f)
+    print(text)
+}
+```
+
+## Sampling the training data
+
+We are going to sample the training data because it's too large and we can infer many things from a smaller subset. We are going to use 10000 lines from each file and save them to another file.
+
+The following function performs the sampling:
+```{r, cache = TRUE, eval=FALSE, message = FALSE, warning=FALSE}
+sampleText <- function (f, MAXLINES = 100, nchunk = 1, p = 0.5, pTrain = 1) {
+    f_split <- strsplit(f, "/")[[1]]
+    con <- file(f, "r")
+    # f_out <- paste(f, "samp", MAXLINES, nchunk, p, sep = '.')
+    f_out <- paste("Coursera-SwiftKey/train/", f_split[length(f_split)], sep = "")
+    f_out_test <- paste("Coursera-SwiftKey/test/", f_split[length(f_split)], sep = "")
+    con_out <- file(f_out, "w")
+    con_out_test <- file(f_out_test, "w")
+    nlines <- 0
+    lines <- "lines"
+    while (length(lines) > 0 & nlines < MAXLINES) {
+        lines <- readLines(con, nchunk, ok = TRUE)
+        # print(lines)
+        if (rbinom(1, 1, p)) {
+            if (pTrain < 1 & rbinom(1, 1, 1 - pTrain)) {
+                    writeLines(lines, con = con_out_test)
+            } else {
+                writeLines(lines, con = con_out)
+                nlines <- nlines + length(lines)
+            }
+        }
+    }
+    close(con)
+    close(con_out)
+    close(con_out_test)
+}
+filenames <- c(
+    "Coursera-SwiftKey/final/en_US/en_US.twitter.txt",
+    "Coursera-SwiftKey/final/en_US/en_US.blogs.txt",
+    "Coursera-SwiftKey/final/en_US/en_US.news.txt"
+)
+max_lines <- 10000
+nchunk <- 1
+p <- 1/(500000/max_lines)
+pTrain <- 0.8
+for (f in filenames) {
+    sampleText(f, max_lines, nchunk, p, pTrain)
+}
+```
+So, we then have to read from the subset files.
+
+## Exploratory Data Analysis
+
+In the following chunk we read each subset
+```{r, cache = TRUE, eval = TRUE, message = FALSE, warning=FALSE}
+filenames <- c(
+    # "Coursera-SwiftKey/final/en_US/en_US.twitter.txt",
+    # "Coursera-SwiftKey/final/en_US/en_US.blogs.txt",
+    # "Coursera-SwiftKey/final/en_US/en_US.news.txt"
+    # "Coursera-SwiftKey/final/en_US/en_US.twitter.txt.samp.10000.1.0.02",
+    # "Coursera-SwiftKey/final/en_US/en_US.blogs.txt.samp.10000.1.0.02",
+    # "Coursera-SwiftKey/final/en_US/en_US.news.txt.samp.10000.1.0.02"
+    "Coursera-SwiftKey/train/en_US.twitter.txt",
+    "Coursera-SwiftKey/train/en_US.blogs.txt",
+    "Coursera-SwiftKey/train/en_US.news.txt"
+)
+lines_file <- c()
+for (f in filenames) {
+    con <- file(f, "r")
+    max_lines <- 10000
+    lines_file <- c(lines_file, readLines(con, max_lines))
+    close(con)
+}
+max_lines <- length(lines_file)
+```
+
+
+Then:
+
+- keep the letters, `'` and spaces
+
+- replace double spaces with a single one
+
+- delete spaces at the beginning or end
+
+- lowercase
+
+```{r, cache = TRUE, eval = TRUE}
+inds <- 1:max_lines
+lines <- lines_file[inds]
+lines[inds] <- gsub("((?![a-zA-Z' ]).)*", "", lines[inds], perl = TRUE)
+lines[inds] <- gsub("  +", " ", lines[inds])
+lines[inds] <- gsub("^ | $", "", lines[inds])
+lines[inds] <- tolower(lines[inds])
+```
+
+Calculate the frequencies
+```{r, cache=TRUE, eval = FALSE}
+# words
+words <- Reduce(paste, lines[inds])
+words <- strsplit(words, " ")[[1]]
+words <- words[sort.list(words)]
+# frequency table
+t <- table(words)
+t <- t[sort.list(as.vector(t), decreasing = TRUE)]
+t <- as.data.frame(t)
+t$perc <- t$Freq/(sum(t$Freq))
+t$perc_cum <- t$perc
+for (i in 2:length(t$perc_cum)) {
+    t$perc_cum[i] <- t$perc_cum[i - 1] + t$perc_cum[i]
+}
+head(t)
+```
+
+```{r, eval = TRUE, message = FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+Some words are more frequent than others - what are the distributions of word frequencies? 
+
+```{r, cache = TRUE, eval = FALSE}
+g <- t %>% 
+    filter(perc > 0.01) %>% 
+    arrange(-perc) %>% 
+    ggplot() + 
+    geom_bar(aes(reorder(words, perc), perc), color = 'blue', stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_y_continuous(labels = scales::percent) +
+    coord_flip()
+g
+```
+How many unique words do you need in a frequency sorted dictionary to cover 50% of all word instances in the language? 
+```{r, cache=TRUE, eval = FALSE}
+dim(t)
+t[which(t$perc_cum > .5)[1], ]
+```
+In this dictionary, we need 141 words over 52997 (0.26%)
+
+90%? 
+```{r, cache=TRUE, eval = FALSE}
+t[which(t$perc_cum > .9)[1], ]
+```
+To cover 90% we need 7818 words (14.75%)
+
+How do you evaluate how many of the words come from foreign languages? 
+
+We can look up each word in the dataset in a English dictionary and those which are not found are from foreign languages.
+
+Can you think of a way to increase the coverage?
+
+We can increase the coverage adding more words or using a smaller number of words.
+
+### n-grams
+
+What are the frequencies of 2-grams and 3-grams in the dataset? 
+
+The following code can calculate the frequencies of the 2-gram and 3-gram but it's 
+really time consuming because it's not optimized. So we are going to use the library related with text mining and NLP instead of this code.
+
+```{r, cache=TRUE, eval = FALSE}
+# split the words line by line
+splits <- strsplit(lines[inds], " ")
+```
+
+Make the n-grams by hand
+```{r, cache=FALSE, eval=FALSE}
+two_grams <- data.frame()
+three_grams <- data.frame()
+for (i in (1:length(splits))) {
+    if (length(splits[[i]]) - 1 > 0) {
+        word_inds <- match(splits[[i]], t$words)
+        flags <- integer(length(splits[[i]]))
+        flags[1] <- -1
+        two_grams <- rbind(
+            two_grams, 
+            data.frame(
+                flags, word_inds,
+                fix.empty.names = FALSE
+            )
+        )
+        if (length(splits[[i]]) - 2 > 0) {
+            flags2 <- flags
+            flags2[2] <- -1
+            three_grams <- rbind(
+                three_grams, 
+                data.frame(
+                    flags2, flags, word_inds,
+                    fix.empty.names = FALSE
+                )
+            )
+        }    
+    }    
+}
+names(two_grams) <- c("w1", "w2")
+names(three_grams) <- c("w1", "w2", "w3")
+two_grams[two_grams$w1 == 0, "w1"] <-
+    two_grams[two_grams$w1[2:(length(two_grams$w1))] == 0, "w2"][1:sum(two_grams$w1 == 0)]
+two_grams <- two_grams[two_grams$w1 > 0, ]
+three_grams[three_grams$w1 == 0, "w1"] <-
+    three_grams[three_grams$w1[3:(length(three_grams$w1))] == 0, "w3"][1:sum(three_grams$w1 == 0)]
+three_grams[three_grams$w2 == 0, "w2"] <-
+    three_grams[three_grams$w2[2:(length(three_grams$w2))] == 0, "w3"][1:sum(three_grams$w2 == 0)]
+three_grams <- three_grams[three_grams$w1 > 0, ]
+```
+```{r, cache=TRUE, eval=FALSE}
+two_grams$w1 <- as.factor(two_grams$w1)
+two_grams$w2 <- as.factor(two_grams$w2)
+
+three_grams$w1 <- as.factor(three_grams$w1)
+three_grams$w2 <- as.factor(three_grams$w2)
+three_grams$w3 <- as.factor(three_grams$w3)
+t2 <- two_grams %>%
+    group_by(w1, w2) %>%
+    summarise(
+        freq = n(),
+        perc_freq = n()/length(two_grams$w1)
+    ) %>%
+    arrange(-freq)
+t3 <- three_grams %>%
+    group_by(w1, w2, w3) %>%
+    summarise(
+        freq = n(),
+        perc_freq = n()/length(three_grams$w1)
+    ) %>%
+    arrange(-freq)
+```
+```{r, cache=TRUE, eval=FALSE, echo=FALSE}
+t2 <- table(two_grams)
+# t2 <- t2[t2 > (1/100*length(two_grams))]
+t2 <- t2[sort.list(as.vector(t2), decreasing = TRUE)]
+# min_l <- min(length(t2), 100)
+# t2 <- t2[1:min_l]
+t2 <- as.data.frame(t2)
+t2$perc <- t2$Freq/(sum(t2$Freq))
+
+t3 <- table(three_grams)
+# t2 <- t2[t2 > (1/100*length(two_grams))]
+t3 <- t3[sort.list(as.vector(t3), decreasing = TRUE)]
+# min_l <- min(length(t2), 100)
+# t2 <- t2[1:min_l]
+t3 <- as.data.frame(t3)
+t3$perc <- t3$Freq/(sum(t3$Freq))
+```
+
+## n-grams Using Libraries
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+library(tm)
+library(RWeka)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+text <- VCorpus(VectorSource(lines))
+```
+
+### 1-gram
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+t1 <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 1, max = 1))))
+
+f1 <- findFreqTerms(t1, lowfreq = 100)
+s1 <- rowSums(as.matrix(t1[f1,]))
+n1 <- data.frame(n1=names(s1), freq = s1)
+```
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+n1 <- n1 %>% arrange(-freq)
+n1$perc <- n1$freq/(sum(n1$freq))
+n1$perc_cum <- n1$perc
+for (i in 2:length(n1$perc_cum)) {
+    n1$perc_cum[i] <- n1$perc_cum[i - 1] + n1$perc_cum[i]
+}
+```
+
+<!-- This 1-gram has 72 words because we filtered out the words with frequency less than 1000.  -->
+<!-- As we saw before, this cover less than 50% of total words. So we will change the limit if we need to cover more words. -->
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+g <- n1 %>% 
+    filter(perc > 0.01) %>%
+    arrange(-freq) %>%
+    ggplot() + 
+    geom_bar(aes(reorder(n1, freq), perc), color = 'blue', stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_y_continuous(labels = scales::percent) +
+    coord_flip()
+g
+```
+
+### 2-gram
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+t2 <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 2, max = 2))))
+
+f2 <- findFreqTerms(t2, lowfreq = 100)
+s2 <- rowSums(as.matrix(t2[f2,]))
+n2 <- data.frame(n2=names(s2), freq = s2)
+```
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+n2 <- n2 %>% arrange(-freq)
+n2$perc <- n2$freq/(sum(n2$freq))
+n2$perc_cum <- n2$perc
+for (i in 2:length(n2$perc_cum)) {
+    n2$perc_cum[i] <- n2$perc_cum[i - 1] + n2$perc_cum[i]
+}
+```
+
+
+```{r, cache=TRUE, eval = FALSE}
+g <- n2 %>% 
+    filter(perc > 0.005) %>%
+    ggplot() + 
+    geom_bar(aes(reorder(n2,freq), perc), color = 'blue', stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_y_continuous(labels = scales::percent) +
+    coord_flip()
+g
+```
+
+### 3-gram
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+t3 <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 3, max = 3))))
+
+f3 <- findFreqTerms(t3, lowfreq = 10)
+s3 <- rowSums(as.matrix(t3[f3,]))
+n3 <- data.frame(n3=names(s3), freq = s3)
+```
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+n3 <- n3 %>% arrange(-freq)
+n3$perc <- n3$freq/(sum(n3$freq))
+n3$perc_cum <- n3$perc
+for (i in 2:length(n3$perc_cum)) {
+    n3$perc_cum[i] <- n3$perc_cum[i - 1] + n3$perc_cum[i]
+}
+```
+
+```{r, cache=TRUE, eval = FALSE}
+g <- n3 %>% 
+    filter(perc > 0.002) %>%
+    ggplot() + 
+    geom_bar(aes(reorder(n3,freq), perc), color = 'blue', stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_y_continuous(labels = scales::percent) +
+    coord_flip()
+g
+```
+
+## Modeling
+
+To build a basic n-gram model we can use the `markovchain` package. 
+
+```{r, eval = TRUE, message=FALSE, warning=FALSE}
+library(markovchain)
+```
+
+We need to provide the states (words, phrases or tokens) and calculate the transition matrix. We can make this model efficient because we can provide a small amount of frequent states (top words and n-grams).
+
+To handle unseen n-grams we can use an unknown token which represents any word not included in the other states. Furthermore, we can smooth the probabilities giving a non-zero probability even if they are unseen n-grams or words.
+
+To evaluate the model we can check the predictions given different initial states and test if the predictions have any sense.
+
+To estimate the probability of unobserved n-grams we can use back-off models where the history is used to make predictions. Given the probabilities of the observed (n-1)-grams the probability of unseen n-grams can be estimated doing some calculations ([backoff models](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)).
+
+### Simple n-gram model
+To build a simple n-gram model we will use the 2-gram frequencies as the probabilities for every word. The unseen 2-grams are given a small probability.
+
+States
+```{r, eval = FALSE}
+states1 <- as.character(n1$n1)
+
+states2 <- Reduce(paste, as.character(n2$n2))
+states2 <- strsplit(states2, " ")[[1]]
+states2 <- unique(states2)
+
+states3 <- Reduce(paste, as.character(n3$n3))
+states3 <- strsplit(states3, " ")[[1]]
+states3 <- unique(states3)
+
+states <- c(states1, states2, states3)
+states <- unique(states)
+states <- c(states, "UNK")
+states <- factor(states)
+states <- sort(states)
+
+```
+
+Transition Matrix
+```{r, eval = FALSE}
+m <- data.frame(row.names = states)
+for (s in states) m[[s]] <- 0
+
+for (n in 1:length(n2$n2)) {
+# for (n in 1:5) {
+  n22 <- strsplit(as.character(n2$n2[n]), " ")[[1]]
+  m[n22[1], n22[2]] <- n2$freq[n]
+}
+m["UNK", ] <- 1
+m$rows_sum <- rowSums(m)
+
+m <- m %>% arrange(-rows_sum)
+m <- m %>% filter(rows_sum > 0)
+rnames <- row.names(m)
+m <- m %>% mutate_at(vars(-rows_sum), ~ . / rows_sum) %>% select(-rows_sum)
+row.names(m) <- rnames
+m <- m %>% select(row.names(.))
+
+m <- m %>% relocate(row.names(.), .after = last_col())
+
+m <- m + 0.001
+rows_sum <- rowSums(m)
+m <- m %>% mutate_all(~ ./rows_sum)
+row.names(m) <- rnames
+```
+
+Build the model
+```{r, eval = FALSE}
+mc <- new(
+    "markovchain", 
+    states = names(m), 
+    byrow = TRUE, 
+    transitionMatrix = as.matrix(m), 
+    name = "n-gram Model"
+)
+```
+
+Make some predictions
+```{r, eval = FALSE}
+preds <- c()
+for (n in names(mc)) {
+    w1 <- vector(mode = 'integer', length = length(names(mc)))
+    w1[match(n, names(mc))] <- 1
+    w2 <- w1 * (mc)
+    # w3 <- w1 * (mc ^ 2)
+    # preds <- rbind(preds, paste(names(mc)[which.max(w1)], names(mc)[which.max(w2)], names(mc)[which.max(w3)]))
+    preds <- rbind(preds, paste(names(mc)[which.max(w1)], names(mc)[which.max(w2)]))
+}
+preds
+```
+
+## Prediction Model
+
+### n-gram
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+library(tm)
+library(RWeka)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+text <- VCorpus(VectorSource(lines))
+```
+
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+t1 <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 1, max = 1))))
+
+f1 <- findFreqTerms(t1, lowfreq = 100)
+s1 <- rowSums(as.matrix(t1[f1,]))
+n1 <- data.frame(n1=names(s1), freq = s1)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+n1 <- n1 %>% arrange(-freq)
+n1$perc <- n1$freq/(sum(n1$freq))
+n1$perc_cum <- n1$perc
+for (i in 2:length(n1$perc_cum)) {
+    n1$perc_cum[i] <- n1$perc_cum[i - 1] + n1$perc_cum[i]
+}
+```
+
+
+

@@ -1,0 +1,138 @@
+---
+title: "Data Science Capstone - Final Project"
+author: "Daniel Contrera"
+date: "12/29/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+In the following chunk we read each subset
+```{r, cache = TRUE, eval = TRUE, message = FALSE, warning=FALSE}
+filenames <- c(
+    "Coursera-SwiftKey/train/en_US.twitter.txt",
+    "Coursera-SwiftKey/train/en_US.blogs.txt",
+    "Coursera-SwiftKey/train/en_US.news.txt"
+)
+lines_file <- c()
+for (f in filenames) {
+    con <- file(f, "r")
+    max_lines <- 500
+    lines_file <- c(lines_file, readLines(con, max_lines))
+    close(con)
+}
+max_lines <- length(lines_file)
+```
+
+
+Then:
+
+- keep the letters, `'` and spaces
+
+- replace double spaces with a single one
+
+- delete spaces at the beginning or end
+
+- lowercase
+
+```{r, cache = TRUE, eval = TRUE}
+inds <- 1:max_lines
+lines <- lines_file[inds]
+lines[inds] <- gsub("((?![a-zA-Z' ]).)*", "", lines[inds], perl = TRUE)
+lines[inds] <- gsub("  +", " ", lines[inds])
+lines[inds] <- gsub("^ | $", "", lines[inds])
+lines[inds] <- tolower(lines[inds])
+```
+
+## Prediction Model
+
+```{r, eval = TRUE, message = FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### n-gram
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+library(tm)
+library(RWeka)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+text <- VCorpus(VectorSource(lines))
+```
+
+
+```{r nGramTokenizer, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+tdm <- TermDocumentMatrix(text, control=list(tokenize = function (x) NGramTokenizer(x, control = Weka_control(min = 1, max = 4))))
+```
+
+```{r, cache=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ft <- findFreqTerms(tdm, lowfreq = 1)
+rs <- rowSums(as.matrix(tdm[ft,]))
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+ng <- data.frame(ng=names(rs), freq = rs)
+
+ng <- ng %>% arrange(-freq)
+ng$perc <- ng$freq/(sum(ng$freq))
+ng$perc_cum <- ng$perc
+for (i in 2:length(ng$perc_cum)) {
+    ng$perc_cum[i] <- ng$perc_cum[i - 1] + ng$perc_cum[i]
+}
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+sp <- strsplit(as.character(ng$ng), " ")
+ng$len <- sapply(sp, length)
+ng$hist <- sapply(sp, function(x) Reduce(paste, x[1:(length(x) - 1)]))
+ng$y <- sapply(sp, function(x) Reduce(paste, x[length(x):length(x)]))
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+nh <- ng %>% 
+    select(hist, freq) %>%
+    group_by(hist) %>%
+    summarise(freq = sum(freq)) %>%
+    arrange(-freq)
+```
+
+Discount
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+fhf <- table(nh$freq)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# discount
+d <- function (c, fhf) {
+    nc <- fhf[as.character(c)][[1]]
+    nc1 <- fhf[as.character(c + 1)][[1]] 
+    # count good turing
+    cgt <- (c + 1) * nc1/nc
+    ifelse(c == 0, fhf[1]/sum(fhf), cgt/c)
+}
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# count ngram
+c_hist <- function (hist, nh) {
+    nh[nh$hist %in% hist, ]$freq
+}
+```
+
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# beta
+b <- function (hist, k, ng, nh, fhf) {
+    words <- ng$y[ng$hist == hist]
+    C <- nh$freq[nh$hist %in% paste(hist, words) & nh$freq > k]
+    Ch <- nh$freq[nh$hist == hist]
+    dc <- d(c_hist(paste(hist, words), nh), fhf)
+    sums <- dc * C/Ch
+    summ <- sum(sums)
+    1 - summ
+}
+```
+
