@@ -107,8 +107,10 @@ fhf <- table(nh$freq)
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 # discount
 d <- function (c, fhf) {
-    nc <- fhf[as.character(c)][[1]]
-    nc1 <- fhf[as.character(c + 1)][[1]] 
+    nc <- fhf[as.character(c)]
+    nc1 <- fhf[as.character(c + 1)]
+    nc <- replace(nc, which(is.na(nc)), 1)
+    nc1 <- replace(nc1, which(is.na(nc1)), 1)
     # count good turing
     cgt <- (c + 1) * nc1/nc
     ifelse(c == 0, fhf[1]/sum(fhf), cgt/c)
@@ -127,12 +129,60 @@ c_hist <- function (hist, nh) {
 # beta
 b <- function (hist, k, ng, nh, fhf) {
     words <- ng$y[ng$hist == hist]
-    C <- nh$freq[nh$hist %in% paste(hist, words) & nh$freq > k]
+    C <- ng$freq[ng$ng %in% paste(hist, words) & ng$freq > k]
     Ch <- nh$freq[nh$hist == hist]
-    dc <- d(c_hist(paste(hist, words), nh), fhf)
+    dc <- d(C, fhf)
     sums <- dc * C/Ch
     summ <- sum(sums)
     1 - summ
+}
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+Pbo <- function (wi, hist, k, ng, nh, fhf) {
+    Cwi <- ng$freq[ng$ng %in% paste(hist, wi) & ng$freq > k]
+    Cwh <- ng$freq[ng$ng %in% paste(hist) & ng$freq > k]
+    dw <- d(Cwi, fhf)
+    ah <- a(hist, k, ng, nh, fhf)
+    if (Cwi > k) {
+        p <- dw * Cwi / Cwh
+    } else {
+        ws <- strsplit(hist, " ")[[1]]
+        if (length(ws) > 1) {
+            hist2 <- ws[2:length(ws)]
+            pBack <- Pbo(wi, hist2, k, ng, nh, fhf)
+        } else {
+            n_words <- sum(ng$freq[ng$len == 1])
+            if (is.na(ng$ng[ng$ng == wi])) {
+                pBack <- dw * ng$ng[ng$ng == "UNK"]/n_words
+            } else {
+                pBack <- dw * ng$ng[ng$ng == wi]/n_words
+            }
+        }
+        p <- ah * pBack
+    }
+    p
+}
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# alpha
+a <- function (hist, k, ng, nh, fhf) {
+    beta <- b(hist, k, ng, nh, fhf)
+    words <- ng$y[ng$hist == hist]
+    ws <- strsplit(hist, " ")[[1]]
+    if (is.list(ws) & length(ws) > 1) {
+        hist2 <- ws[2:length(ws)]
+        Pbos <- Pbo(wi, hist2, k, ng, nh, fhf)
+    } else {
+        if (wi %in% ng$ng) {
+            Pbos <- ng$freq[ng$ng == wi]
+        } else {
+            Pbos <- ng$freq[ng$ng == "UNK"]
+        }
+    }
+    summ <- sum(Pbos)
+    beta/(1 - summ)
 }
 ```
 
