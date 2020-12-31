@@ -62,7 +62,6 @@ library(RWeka)
 text <- VCorpus(VectorSource(lines))
 ```
 
-
 ```{r nGramTokenizer, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
 tdm <- TermDocumentMatrix(
     text, 
@@ -84,6 +83,12 @@ rs <- rowSums(as.matrix(tdm[ft,]))
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 ng <- data.frame(ng=names(rs), freq = rs)
 
+sp <- strsplit(as.character(ng$ng), " ")
+freqUnk <- sum(sapply(sp, length) == 1)
+unkRow <- data.frame(ng = "UNK", freq = freqUnk)
+ng <- rbind(ng, unkRow)
+# ng$freq <- ng$freq - 1
+
 ng <- ng %>% arrange(-freq)
 ng$perc <- ng$freq/(sum(ng$freq))
 ng$perc_cum <- ng$perc
@@ -97,13 +102,17 @@ sp <- strsplit(as.character(ng$ng), " ")
 ng$len <- sapply(sp, length)
 ng$hist <- sapply(sp, function(x) {
         if (length(x) == 1) {
-            ""
+            "UNK"
         } else {
             Reduce(paste, x[1:(length(x) - 1)])
         }
     }
 )
 ng$y <- sapply(sp, function(x) Reduce(paste, x[length(x):length(x)]))
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+
 ```
 
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
@@ -158,10 +167,14 @@ b <- function (hist, k, ng, nh, fhf) {
 Pbo <- function (wi, hist, k, ng, nh, fhf) {
     if (length(hist) == 1 & hist[1] == "") {
         ph <- wi
-        Cwh <- ng$freq[ng$ng == paste(hist) & ng$freq > k]
+        Cwh <- ng$freq[ng$ng == "UNK" & ng$freq > k]
     } else {
         ph <- paste(hist, wi)
-        Cwh <- ng$freq[ng$ng == paste(hist) & ng$freq > k]
+        if (hist %in% ng$ng) {
+            Cwh <- ng$freq[ng$ng == paste(hist) & ng$freq > k]
+        } else {
+            Cwh <- ng$freq[ng$ng == "UNK" & ng$freq > k]
+        }
     }
     Cwi <- c()
     for (j in 1:length(ph)) {
@@ -207,14 +220,97 @@ a <- function (hist, k, ng, nh, fhf) {
         hist2 <- ws[2:length(ws)]
         Pbos <- Pbo(words, hist2, k, ng, nh, fhf)
     } else {
-        if (any(ng$ng %in% wi)) {
-            Pbos <- ng$freq[ng$ng %in% wi]
-        } else {
-            Pbos <- ng$freq[ng$ng == "UNK"]
-        }
+        # if (any(ng$ng %in% wi)) {
+        #     Pbos <- ng$freq[ng$ng %in% wi]
+        # } else {
+        #     Pbos <- ng$freq[ng$ng == "UNK"]
+        # }
+        Pbos <- numeric(length(words))
     }
     summ <- sum(Pbos)
     beta/(1 - summ)
 }
 ```
 
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+predictWord <- function (wi, hist, k, ng, nh, fhf, hlen = 3) {
+    sp <- strsplit(lower(hist), " ")[[1]]
+    for (h in -1:-hlen) {
+        hi <- paste(sp[h:0 + length(sp)], "")
+        Pbos <- Pbo(wi, hi, k, ng, nh, fhf)
+        print(Pbos)
+        print(wi[which.max(Pbos)])
+    }
+}
+k <- 0
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 1
+wi <- c("cheese", "soda", "beer", "pretzels")
+hist <- "The guy in front of me just bought a pound of bacon a bouquet and a case of"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 2
+wi <- c("universe", "world", "best", "most")
+hist <- "You re the reason why I smile everyday Can you follow me please It would mean the"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 3
+wi <- c("smelliest", "bluest", "saddest", "happiest")
+hist <- "Hey sunshine, can you follow me and make me the"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 4
+wi <- c("crowd", "defense", "players", "referees")
+hist <- "Very early observations on the Bills game: Offense still struggling but the"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 5
+wi <- c("mall", "beach", "grocery", "movies")
+hist <- "Go on a romantic date at the"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 6
+wi <- c("horse", "phone", "way", "motorcycle")
+hist <- "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 7
+wi <- c("time", "years", "thing", "weeks")
+hist <- "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 8
+wi <- c("eyes", "fingers", "ears", "toes")
+hist <- "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 9
+wi <- c("worse", "hard", "bad", "sad")
+hist <- "Be grateful for the good times and keep the faith during the"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 10
+wi <- c("callous", "insensitive", "insane", "asleep")
+hist <- "If this isn't the cutest thing you've ever seen, then you must be"
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+```
