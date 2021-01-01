@@ -7,6 +7,13 @@ editor_options:
   chunk_output_type: console
 ---
 
+```{r, cache = FALSE, eval = TRUE, message = FALSE, warning=FALSE}
+mlines <- 2000
+nmax <- 4
+lowfreq <- 1
+# sparsity <- .9995
+sparsity <- 1
+```
 In the following chunk we read each subset
 ```{r, cache = TRUE, eval = TRUE, message = FALSE, warning=FALSE}
 filenames <- c(
@@ -17,13 +24,28 @@ filenames <- c(
 lines_file <- c()
 for (f in filenames) {
     con <- file(f, "r")
-    max_lines <- 500
+    max_lines <- mlines
     lines_file <- c(lines_file, readLines(con, max_lines))
     close(con)
 }
 max_lines <- length(lines_file)
 ```
 
+```{r, cache = TRUE, eval = TRUE, message = FALSE, warning=FALSE}
+filenames <- c(
+    "Coursera-SwiftKey/test/en_US.twitter.txt",
+    "Coursera-SwiftKey/test/en_US.blogs.txt",
+    "Coursera-SwiftKey/test/en_US.news.txt"
+)
+lines_file_test <- c()
+for (f in filenames) {
+    con <- file(f, "r")
+    max_lines_test <- 500
+    lines_file_test <- c(lines_file_test, readLines(con, max_lines_test))
+    close(con)
+}
+max_lines_test <- length(lines_file_test)
+```
 
 Then:
 
@@ -44,6 +66,15 @@ lines[inds] <- gsub("^ | $", "", lines[inds])
 lines[inds] <- tolower(lines[inds])
 ```
 
+```{r, cache = TRUE, eval = TRUE}
+inds_test <- 1:max_lines_test
+lines_test <- lines_file_test[inds_test]
+lines_test[inds_test] <- gsub("((?![a-zA-Z' ]).)*", "", lines_test[inds_test], perl = TRUE)
+lines_test[inds_test] <- gsub("  +", " ", lines_test[inds_test])
+lines_test[inds_test] <- gsub("^ | $", "", lines_test[inds_test])
+lines_test[inds_test] <- tolower(lines_test[inds_test])
+```
+
 ## Prediction Model
 
 ```{r, eval = TRUE, message = FALSE, warning=FALSE}
@@ -62,39 +93,99 @@ library(RWeka)
 text <- VCorpus(VectorSource(lines))
 ```
 
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+tw <- Reduce(paste, lines_test)
+tw <- strsplit(tw, "'")[[1]]
+tw <- Reduce(paste, tw)
+tw <- strsplit(tw, " ")[[1]]
+twu <- unique(tw)
+```
+
+```{r, eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+sw <- Reduce(paste, sample(lines, 10))
+sw <- strsplit(sw, "'")[[1]]
+sw <- Reduce(paste, sw)
+sw <- strsplit(sw, " ")[[1]]
+swu <- unique(sw)
+mean(swu %in% twu)
+```
+
 ```{r nGramTokenizer, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
-tdm <- TermDocumentMatrix(
-    text, 
-    control=list(
+# tdm <- TermDocumentMatrix(
+#     text, 
+#     control=list(
+#         tokenize = function (x) NGramTokenizer(
+#             x, 
+#             control = Weka_control(min = 1, max = nmax)
+#         ),
+#         wordLengths=c(1, Inf)
+#     )
+# )
+tfs <- termFreq(
+    lines, 
+    control = list(
         tokenize = function (x) NGramTokenizer(
             x, 
-            control = Weka_control(min = 1, max = 4)
+            control = Weka_control(min = 1, max = nmax)
         ),
         wordLengths=c(1, Inf)
     )
 )
 ```
 
-```{r, cache=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
-ft <- findFreqTerms(tdm, lowfreq = 1)
-rs <- rowSums(as.matrix(tdm[ft,]))
+```{r, cache=FALSE, eval=FALSE, message=FALSE, warning=FALSE}
+ft <- findFreqTerms(tdm, lowfreq = lowfreq)
+tf <- tdm[ft,]
+if (sparsity < 1) {
+    tf <- removeSparseTerms(tf, sparsity)
+}
+tsft <- sapply(ft, function (f) tm_term_score(tf, f, sum))
+# mtf <- as.matrix(tf)
+# rs <- rowSums(as.matrix(tdm[ft,]))
+# rs <- rowSums(mtf)
+# rm(mtf)
 ```
 
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-ng <- data.frame(ng=names(rs), freq = rs)
-
+# ng <- data.frame(ng=names(rs), freq = rs)
+# ng <- as.data.frame(tsft)
+ng <- as.data.frame(tfs)
+names(ng) <- "freq"
+ng$ng <- row.names(ng)
 sp <- strsplit(as.character(ng$ng), " ")
-freqUnk <- sum(sapply(sp, length) == 1)
-unkRow <- data.frame(ng = "UNK", freq = freqUnk)
+ng$len <- sapply(sp, length)
+```
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+pWords <- function (sampleText, wordsRef) {
+    swt <- Reduce(paste, sample(sampleText, 10))
+    swt <- strsplit(swt, "'")[[1]]
+    swt <- Reduce(paste, swt)
+    swt <- strsplit(swt, " ")[[1]]
+    swut <- unique(swt)
+    mean(swut %in% wordsRef)
+}
+pWordsUnk <- c()
+for (i in 1:100) {
+    pWordsUnk <- c(pWordsUnk, pWords(lines_test, ng$ng[ng$len == 1]))
+}
+pUnk <- 1 - mean(pWordsUnk)
+```
+
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# freqUnk <- sum(sapply(sp, length) == 1)
+freqUnk <- round(sum(ng$freq[ng$len == 1]) * pUnk)
+unkRow <- data.frame(ng = "UNK", freq = freqUnk, row.names = "UNK", len = 1)
 ng <- rbind(ng, unkRow)
 # ng$freq <- ng$freq - 1
 
 ng <- ng %>% arrange(-freq)
-ng$perc <- ng$freq/(sum(ng$freq))
-ng$perc_cum <- ng$perc
-for (i in 2:length(ng$perc_cum)) {
-    ng$perc_cum[i] <- ng$perc_cum[i - 1] + ng$perc_cum[i]
-}
+# ng$perc <- ng$freq/(sum(ng$freq))
+# ng$perc_cum <- ng$perc
+# for (i in 2:length(ng$perc_cum)) {
+#     ng$perc_cum[i] <- ng$perc_cum[i - 1] + ng$perc_cum[i]
+# }
 ```
 
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
@@ -149,7 +240,6 @@ c_hist <- function (hist, nh) {
 }
 ```
 
-
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
 # beta
 b <- function (hist, k, ng, nh, fhf) {
@@ -193,7 +283,7 @@ Pbo <- function (wi, hist, k, ng, nh, fhf) {
         } else {
             ws <- strsplit(hist, " ")[[1]]
             if (length(ws) > 1) {
-                hist2 <- ws[2:length(ws)]
+                hist2 <- Reduce(paste, ws[2:length(ws)])
                 pBack <- Pbo(wi[i], hist2, k, ng, nh, fhf)
                 p <- c(p, ah * pBack)
             } else {
@@ -233,84 +323,101 @@ a <- function (hist, k, ng, nh, fhf) {
 ```
 
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-predictWord <- function (wi, hist, k, ng, nh, fhf, hlen = 3) {
-    sp <- strsplit(lower(hist), " ")[[1]]
-    for (h in -1:-hlen) {
-        hi <- paste(sp[h:0 + length(sp)], "")
+predictWord <- function (wi, hist, k, ng, nh, fhf, hlen = 1:3) {
+    sp <- strsplit(tolower(hist), " ")[[1]]
+    if (hlen == -1) {hlen <- 1:length(sp)}
+    # else if (length(hlen == 1)) {hlen <- 1:hlen}
+    # for (h in -1:-(hlen)) {
+    for (h in -hlen) {
+        hi <- Reduce(paste, sp[h:-1 + length(sp) + 1])
         Pbos <- Pbo(wi, hi, k, ng, nh, fhf)
+        preds <- wi[which(Pbos == max(Pbos))]
+        print(hi)
         print(Pbos)
-        print(wi[which.max(Pbos)])
+        print(preds)
+        # ng %>% filter(ng %in% preds) %>% select(freq) %>% first() %>% print()
+        print(Pbos[which(Pbos == max(Pbos))]/norm(as.matrix(Pbos)))
     }
 }
 k <- 0
 ```
 
+Summary
 ```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 1
+mlines
+nmax
+lowfreq
+sparsity
+format(object.size(ng), units = "auto")
+# tf
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# 1 -pretzels
 wi <- c("cheese", "soda", "beer", "pretzels")
 hist <- "The guy in front of me just bought a pound of bacon a bouquet and a case of"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 2
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 2 world
 wi <- c("universe", "world", "best", "most")
 hist <- "You re the reason why I smile everyday Can you follow me please It would mean the"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 3
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 3 -bluest
 wi <- c("smelliest", "bluest", "saddest", "happiest")
 hist <- "Hey sunshine, can you follow me and make me the"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 4
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 4 -referees
 wi <- c("crowd", "defense", "players", "referees")
 hist <- "Very early observations on the Bills game: Offense still struggling but the"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 5
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 5 beach
 wi <- c("mall", "beach", "grocery", "movies")
 hist <- "Go on a romantic date at the"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 6
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 6 way
 wi <- c("horse", "phone", "way", "motorcycle")
 hist <- "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 7
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 7 time
 wi <- c("time", "years", "thing", "weeks")
 hist <- "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 8
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 8 -eyes
 wi <- c("eyes", "fingers", "ears", "toes")
 hist <- "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 9
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 9 -hard
 wi <- c("worse", "hard", "bad", "sad")
 hist <- "Be grateful for the good times and keep the faith during the"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
-# 10
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+# 10 -insensitive
 wi <- c("callous", "insensitive", "insane", "asleep")
 hist <- "If this isn't the cutest thing you've ever seen, then you must be"
-predictWord(wi, hist, k, ng, nh, fhf, hlen = 3)
+predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
 ```
