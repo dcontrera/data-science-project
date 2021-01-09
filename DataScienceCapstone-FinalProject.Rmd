@@ -9,10 +9,10 @@ editor_options:
 
 ```{r, cache = FALSE, eval = TRUE, message = FALSE, warning=FALSE}
 library(profvis)
-mlines <- 10000
+mlines <- 1000
 nmax <- 4
 lowfreq <- 1
-lowfreq1 <- 1
+lowfreq1 <- 5
 lowfreqn <- 1
 # sparsity <- .9995
 # sparsity <- 1
@@ -390,6 +390,9 @@ Pbo <- function (wis, hists, k, ngp, nhp, fhf, ahs, Cwh, n_words, ih = 1) {
 }
 
 Pboh <- function (wis, hist, k, ngph, nhph, fhf, n_words) {
+    if (!(hist %in% ngph$hist)) {
+        hist <- "UNK"
+    }
     words <- ngph$y[ngph$hist == hist]
     hwords <- paste(hist, words)
     sp <- strsplit(hist, " ")[[1]]
@@ -515,8 +518,9 @@ k <- 0
 ```{r eval=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
 # profvis({
     # m <- matrix(nrow = length(nh$hist), ncol = length(ng$y[ng$len == 1]))
-    # m <- matrix(nrow = 2000, ncol = 50000)
     # m <- matrix(nrow = 5000, ncol = 5000)
+    m <- matrix(nrow = 1000, ncol = 1000)
+    save_m <- FALSE
     # hists <- nh[nh$hist != "UNK", ]$hist[1:nrow(m)]
     # wis <- ng$y[ng$y != "UNK" & ng$len == 1][1:ncol(m)]
     hists <- nh$hist[1:nrow(m)]
@@ -528,8 +532,8 @@ k <- 0
     # nhf <- nh
     # nhf <- nh
     n_words <- sum(ng$freq[ng$len == 1])
-    # for (i in 1:nrow(m)) {
-    for (i in 599:nrow(m)) {
+    for (i in 1:nrow(m)) {
+    # for (i in 599:nrow(m)) {
         print(paste(i, "/", nrow(m), sep = ""))
         # print(nh$hist[i])
         # hwords <- paste(hists[i], wis)
@@ -544,7 +548,7 @@ k <- 0
         ngh <- ng[ng$hist %in% histsis, ]
         m[i, ] <- Pboh(wis, hists[i], k, ngh, nhh, fhf, n_words)
         # m
-        if (i %% 100 == 0) {
+        if (save_m & (i %% 100 == 0)) {
             print("Saving...")
             save(m, file = "m.RData")
         }
@@ -583,7 +587,7 @@ predMark <- function (wi = "", hist, m) {
     if (!any(hist %in% rownames(m))) {hist <- "UNK"}
     rinds <- match(hist, rownames(m))
     if (!any(wi %in% colnames(m))) {wi <- "UNK"}
-    if (length(wi) == 1 & wi[1] == "") {
+    if (length(wi) == 1 & wi[1] == "UNK") {
         cinds <- 1:ncol(m)
     } else {
         cinds <- match(wi, colnames(m))
@@ -609,30 +613,57 @@ predMarks
 ```
 
 ```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
-yts <- c()
+npreds <- 5
+yt <- data.frame(row.names = rownames(predMarks), stringsAsFactors = FALSE)
+# names(yt) <- 1:npreds
 for (i in 1:length(predMarks$hist)) {
-# for (i in 11) {
+# for (i in 1:11) {
     # rg <- regexpr(paste0("(^", as.character(predMarks$hist[i]), ".* ", ")|", "( ", as.character(predMarks$hist[i]), ".* )"), lines)
     # rg <- regexpr(paste0("^(", as.character(predMarks$hist[i]), ") .* .*"), lines)
     # rg <- regexpr(paste0(" ", as.character(predMarks$hist[i]), " .* "), lines)
-    rg <- regexpr(paste0(" ", as.character(predMarks$hist[i]), " [a-zA-Z]+ {1}"), text)
+    rg <- regexpr(paste0(" ", as.character(predMarks$hist[i]), " [a-zA-Z]+ {1}"), lines)
     ini <- (rg[rg > 0] > 1) * 1
     yths <- substr(lines[rg > 0], rg[rg > 0] + ini, rg[rg > 0] + attr(rg, "match.length")[rg > 0] - 2)
     yths <- strsplit(yths, " ")
     yths <- lapply(yths, function (x) {x[length(x)]})
     ythsf <- table(unlist(yths))
-    max <- which.max(ythsf)
-    yt <- names(max)
-    if (length(yt) == 0) {
-        yt <- "UNK"
+    ythsf <- sort(ythsf, decreasing = TRUE)
+    nmax <- min(npreds, length(ythsf))
+    # max <- which.max(ythsf)
+    maxs <- ythsf[1:nmax]
+    yts <- names(maxs)
+    if (length(yts) < npreds) {
+        yts <- c()
+        for (i in max(1, length(yts)):npreds) {
+            yts <- c(yts, "")
+        }
     }
-    yts <- c(yts, yt)
+    # for (j in 1:length(yts)) {
+        yt <- rbind(yt, as.data.frame(t(yts))) 
+    # }
 }
-predMarks$yt <- yts
+names(yt) <- paste("yt ", 1:npreds)
+predMarks <- cbind(predMarks, yt)
 ```
 
 ```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
-predPhrase <- function (wis, hist) {
+accuracy <- -1
+preds <- as.character(predMarks[predMarks$`yt  1` != "", "pred"])
+preds[preds == "UNK"] <- predMarks[predMarks$`yt  1` != "" & predMarks$pred == "UNK", "pred 2"]
+yts <- predMarks[predMarks$`yt  1` != "", paste("yt ", 1:npreds)]
+includes <- c()
+for (i in 1:length(preds)) {
+    include <- preds[i] %in% as.character(unlist(yts[i, ]))
+    includes <- c(includes, include)
+}
+pred <- cbind(preds, yts, includes)
+accuracy <- mean(pred$includes)
+accuracy
+predMarks[predMarks$`yt  1` != "", "acc"] <- pred$includes
+```
+
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+predPhraseMatrix <- function (wis, hist) {
     if (!("UNK" %in% wis)) {
         wis <- c("UNK", wis)
     }
@@ -656,8 +687,104 @@ predPhrase <- function (wis, hist) {
             mPhrase[i, ] <- numeric(length(wis))
         }
     }
+    mPhrase
+}
+predPhrase <- function (wis, hist) {
+    mPhrase <- predPhraseMatrix(wis, hist)
+    histsis <- c()
+    for (j in 1:length(sp)) {
+        histsis <- c(histsis, Reduce(paste, sp[(length(sp) + 1 - j):length(sp)]))
+    }
+    histsis <- c("UNK", histsis)
     predMark(wis, histsis[histsis %in% nhh$hist], mPhrase)
 }
+
+Pboih <- function (wi, hist) {
+    n_words <- sum(ng$freq[ng$len == 1])
+    sp <- strsplit(hist, " ")[[1]]
+    histsis <- c()
+    for (j in 1:length(sp)) {
+        histsis <- c(histsis, Reduce(paste, sp[(length(sp) + 1 - j):length(sp)]))
+    }
+    histsis <- c("UNK", histsis)
+    nhh <- nh[nh$hist %in% histsis, ]
+    ngh <- ng[ng$hist %in% histsis, ]
+    Pboh(wi, hist, k, ngh, nhh, fhf, n_words)
+}
+```
+
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+tfst_test <- termFreq(
+    lines_test, 
+    control = list(
+        tokenize = function (x) NGramTokenizer(
+            x, 
+            control = Weka_control(min = 1, max = nmax)
+        ),
+        wordLengths=c(1, Inf)
+    )
+)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+# ng <- data.frame(ng=names(rs), freq = rs)
+ng_test <- as.data.frame(tfst_test)
+rm(tsft_test)
+# ng <- as.data.frame(tfs)
+names(ng_test) <- "freq"
+ng_test$ng <- row.names(ng_test)
+sp_test <- strsplit(as.character(ng_test$ng), " ")
+ng_test$len <- sapply(sp_test, length)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+ng_test <- ng_test %>% arrange(-freq)
+ngn_test <- ng_test %>% group_by(len) %>% summarise(n = n(), freq = sum(freq))
+ng_test$perc <- ng_test$freq
+for (i in 1:length(ngn_test$len)) {
+    ng_test$perc[ng_test$len == ngn_test$len[i]] <- ng_test$perc[ng_test$len == ngn_test$len[i]] / (ngn_test$freq[i]**0.7) / (ngn_test$len[i]**1.3)
+}
+ng_test <- ng_test %>% arrange(-perc)
+
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+sp_test <- strsplit(as.character(ng_test$ng), " ")
+ng_test$len <- sapply(sp_test, length)
+ng_test$hist <- sapply(sp_test, function(x) {
+        if (length(x) == 1) {
+            "UNK"
+        } else {
+            Reduce(paste, x[1:(length(x) - 1)])
+        }
+    }
+)
+ng_test$y <- sapply(sp_test, function(x) Reduce(paste, x[length(x):length(x)]))
+rm(sp_test)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+nh_test <- ng_test %>% 
+    select(hist, freq) %>%
+    group_by(hist) %>%
+    summarise(freq = sum(freq)) %>%
+    arrange(-freq)
+```
+
+```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+fhf_test <- table(nh_test$freq)
+```
+
+
+Perplexity
+```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+L <- 1000 # 483
+ps <- sapply(1:L, function(i) Pboih(ng_test$y[i], ng_test$hist[i]))
+sums <- log2(ps)
+summ <- sum(sums)
+perp <- 2**(-1/(length(ps)) * summ)
+prodd <- prod(1/ps)
+perp2 <- prodd**(1/length(ps))
 ```
 
 Summary
