@@ -9,7 +9,7 @@ editor_options:
 
 ```{r, cache = FALSE, eval = TRUE, message = FALSE, warning=FALSE}
 library(profvis)
-mlines <- 1000
+mlines <- 10000
 nmax <- 4
 lowfreq <- 1
 lowfreq1 <- 5
@@ -519,8 +519,8 @@ k <- 0
 # profvis({
     # m <- matrix(nrow = length(nh$hist), ncol = length(ng$y[ng$len == 1]))
     # m <- matrix(nrow = 5000, ncol = 5000)
-    m <- matrix(nrow = 1000, ncol = 1000)
-    save_m <- FALSE
+    # m <- matrix(nrow = 1000, ncol = 1000)
+    save_m <- TRUE
     # hists <- nh[nh$hist != "UNK", ]$hist[1:nrow(m)]
     # wis <- ng$y[ng$y != "UNK" & ng$len == 1][1:ncol(m)]
     hists <- nh$hist[1:nrow(m)]
@@ -532,8 +532,8 @@ k <- 0
     # nhf <- nh
     # nhf <- nh
     n_words <- sum(ng$freq[ng$len == 1])
-    for (i in 1:nrow(m)) {
-    # for (i in 599:nrow(m)) {
+    # for (i in 1:nrow(m)) {
+    for (i in 201:nrow(m)) {
         print(paste(i, "/", nrow(m), sep = ""))
         # print(nh$hist[i])
         # hwords <- paste(hists[i], wis)
@@ -690,13 +690,18 @@ predPhraseMatrix <- function (wis, hist) {
     mPhrase
 }
 predPhrase <- function (wis, hist) {
+    hist <- tolower(hist)
+    hist <- gsub("\\.", " ", hist)
+    hist <- gsub(",", " ", hist)
+    hist <- gsub("'", " ", hist)
     mPhrase <- predPhraseMatrix(wis, hist)
+    sp <- strsplit(hist, " ")[[1]]
     histsis <- c()
     for (j in 1:length(sp)) {
         histsis <- c(histsis, Reduce(paste, sp[(length(sp) + 1 - j):length(sp)]))
     }
     histsis <- c("UNK", histsis)
-    predMark(wis, histsis[histsis %in% nhh$hist], mPhrase)
+    predMark(wis, histsis[histsis %in% nh$hist], mPhrase)
 }
 
 Pboih <- function (wi, hist) {
@@ -713,7 +718,7 @@ Pboih <- function (wi, hist) {
 }
 ```
 
-```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
 tfst_test <- termFreq(
     lines_test, 
     control = list(
@@ -726,7 +731,7 @@ tfst_test <- termFreq(
 )
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 # ng <- data.frame(ng=names(rs), freq = rs)
 ng_test <- as.data.frame(tfst_test)
 rm(tsft_test)
@@ -737,7 +742,7 @@ sp_test <- strsplit(as.character(ng_test$ng), " ")
 ng_test$len <- sapply(sp_test, length)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 ng_test <- ng_test %>% arrange(-freq)
 ngn_test <- ng_test %>% group_by(len) %>% summarise(n = n(), freq = sum(freq))
 ng_test$perc <- ng_test$freq
@@ -748,7 +753,7 @@ ng_test <- ng_test %>% arrange(-perc)
 
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 sp_test <- strsplit(as.character(ng_test$ng), " ")
 ng_test$len <- sapply(sp_test, length)
 ng_test$hist <- sapply(sp_test, function(x) {
@@ -763,7 +768,7 @@ ng_test$y <- sapply(sp_test, function(x) Reduce(paste, x[length(x):length(x)]))
 rm(sp_test)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 nh_test <- ng_test %>% 
     select(hist, freq) %>%
     group_by(hist) %>%
@@ -771,13 +776,13 @@ nh_test <- ng_test %>%
     arrange(-freq)
 ```
 
-```{r, cache=TRUE, eval=TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
 fhf_test <- table(nh_test$freq)
 ```
 
 
 Perplexity
-```{r, cache=TRUE, eval = TRUE, message=FALSE, warning=FALSE}
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
 L <- 1000 # 483
 ps <- sapply(1:L, function(i) Pboih(ng_test$y[i], ng_test$hist[i]))
 sums <- log2(ps)
@@ -785,6 +790,15 @@ summ <- sum(sums)
 perp <- 2**(-1/(length(ps)) * summ)
 prodd <- prod(1/ps)
 perp2 <- prodd**(1/length(ps))
+```
+
+Missed n-grams
+
+```{r, cache=TRUE, eval=FALSE, message=FALSE, warning=FALSE}
+for (n in 1:4) {
+    print(paste0("Most Common Missed ", n, " grams:"))
+    ng_test[!(ng_test$ng %in% ng$ng) & ng_test$len == n, ] %>% head() %>% print()
+}
 ```
 
 Summary
@@ -879,5 +893,112 @@ predPhrase(wis, hist)
 wis <- c("callous", "insensitive", "insane", "asleep")
 hist <- "If this isn't the cutest thing you've ever seen, then you must be"
 # predictWord(wi, hist, k, ng, nh, fhf, hlen = 4)
+predPhrase(wis, hist)
+```
+
+
+Task 5 - Creative Exploration
+So far you have used basic models to understand and predict words. In this next task, your goal is to use all the resources you have available to you (from the Data Science Specialization, resources on the web, or your own creativity) to improve the predictive accuracy while reducing computational runtime and model complexity (if you can). Be sure to hold out a test set to evaluate the new, more creative models you are building.
+
+Tasks to accomplish
+
+1. Explore new models and data to improve your predictive model.
+2. Evaluate your new predictions on both accuracy and efficiency. 
+Questions to consider
+
+1. What are some alternative data sets you could consider using? 
+  Some online corpus
+2. What are ways in which the n-gram model may be inefficient?
+  If n is too big you have to manage a big model, which might be inefficient
+3. What are the most commonly missed n-grams? 
+Can you think of a reason why they would be missed and fix that? 
+  Some n-grams are missed, this can be checked with the test set.
+  One reason can be the length of the training set, so take a larger train set.
+  Another reason can be the monotony of the training set, and in particular the 
+  type of corpus (blogs, news and twitter). This can be fix adding extra data 
+  sets
+  The model will have a limited amount of n-grams so some of them will be 
+  dropped. One way to fix it it's taking more n-grams in the model, but you have
+  to consider the size of the model.
+4. What are some other things that other people have tried to improve their model? 
+  Improve the representation
+  Optimize the code and the data formats, e.g. data.table instead of data.frames
+  I optimize some part of the code to calculate the Pbo for a specific hist and 
+  a list of different words (all the possibilities in the model at once).
+  Get more data from different sources or read the all the corpus provided in 
+  the course
+5. Can you estimate how uncertain you are about the words you are predicting? 
+  Given the probabilities, I can estimate the uncertainty comparing the 
+  probabilities for the top predictions. For example, predicting the next world
+  without knowing the history corresponds to the frequency of the word, so if 
+  the frequencies are similar the uncertainty is high.
+  
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 1 die
+wis <- c("die", "give", "sleep", "eat")
+hist <- "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 2 marital
+wis <- c("spiritual", "horticultural", "financial", "marital")
+hist <- "Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 3 weekend
+wis <- c("weekend", "month", "morning", "decade")
+hist <- "I'd give anything to see arctic monkeys this"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 4 stress
+wis <- c("stress", "hunger", "sleepiness", "happiness")
+hist <- "Talking to your mom has the same effect as a hug and helps reduce your"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 5 picture
+wis <- c("picture", "walk", "look", "minute")
+hist <- "When you were in Holland you were like 1 inch away from me but you hadn't time to take a"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 6 matter
+wis <- c("matter", "incident", "case", "account")
+hist <- "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 7 hand
+wis <- c("arm", "finger", "hand", "toe")
+hist <- "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 8 top
+wis <- c("side", "center", "middle", "top")
+hist <- "Every inch of you is perfect from the bottom to the"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 9 outside
+wis <- c("daily", "inside", "outside", "weekly")
+hist <- "I’m thankful my childhood was filled with imagination and bruises from playing"
+predPhrase(wis, hist)
+```
+
+```{r, cache=TRUE, eval = FALSE, message=FALSE, warning=FALSE}
+# 10 movies
+wis <- c("pictures", "stories", "novels", "movies")
+hist <- "I like how the same people are in almost all of Adam Sandler's"
 predPhrase(wis, hist)
 ```
