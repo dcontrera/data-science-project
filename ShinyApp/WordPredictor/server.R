@@ -8,11 +8,12 @@
 #
 
 library(shiny)
+library(shinyjs)
 library(dplyr)
 library(xtable)
 
 # Define server logic required to draw a histogram
-shinyServer(function(input, output) {
+shinyServer(function(input, output, session) {
 
     # output$distPlot <- renderPlot({
     # 
@@ -43,11 +44,51 @@ shinyServer(function(input, output) {
     predictions <- reactive({predictWord(predMarks, input$ngram)})
     print(renderText({predictions()}))
     predictionsFrame <- function(ngram, predictions) {
-        data.frame(input = ngram, prediction = predictions)
+        # print(predictions)
+        df <- data.frame(input = ngram, prediction = predictions)
+        print(head(df))
+        df
     }
-    print(renderText({predictionsFrame(input$ngram, predictions())}))
+    print(renderText({predictions()$word}))
+    print(renderText({predictionsFrame(input$ngram, predictions()$word)}))
     datar <- reactive({
-        predictionsFrame(input$ngram, predictions())
+        # predictionsFrame(input$ngram, predictions())
+        predictionsFrame(predictions()$hist, predictions()$word)
     })
     output$prediction <- renderTable({datar()})
+    npreds <- reactive({
+        if (ncol(datar()) > 0) {
+            npreds <- length(datar()[, 1])
+        } else {
+            npreds <- 0
+        }
+        npreds
+    })
+    output$predButtons <- renderUI({
+        buttons = tagList()
+        for (i in 1:npreds()) {
+            buttons[[i]] <- actionButton(
+                paste0("action", i), 
+                label = paste0(datar()[i, "prediction"])
+            )
+        }
+        buttons
+    })
+    # reactive({
+        # i <- 3
+        # for (i in 1:npreds()) {
+        # for (i in 1:10) {
+        lapply(1:10, function (i) {
+            observeEvent(input[[paste0("action", i)]], {
+            # observeEvent(input[["action1"]], {
+                # input$ngram <- paste(input$ngram, "good")
+                print("Button", i)
+                updateTextInput(session, "ngram", value = paste(input$ngram, datar()[i, "prediction"]))
+            })
+        })
+    # })
+    observeEvent(input$reset, {
+        print(input)
+        reset("ngram")
+    })
 })

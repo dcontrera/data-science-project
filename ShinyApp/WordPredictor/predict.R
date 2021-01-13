@@ -26,32 +26,60 @@ predMark <- function (wi = "", hist, m) {
 # predMarks <- predMark("", rownames(m), m)
 # predMarks
 predictWord <- function (predMarks, ngram) {
+    prediction <- list()
+    prediction$word <- c()
+    prediction$hist <- c()
     if (ngram == "") {
-        return("")
+        # return(
+        #     prediction
+        # )
+        ngram <- "UNK"
     }
     ngram <- tolower(ngram)
+    ngram <- trimws(ngram)
+    ngram <- gsub("'", " ", ngram)
     nmax <- max(predMarks$len)
     sp <- strsplit(ngram, " ")[[1]]
     print(sp)
-    if (length(sp) > nmax) {
-        ngram <- paste(sp[(length(sp) - nmax):length(sp)])
+    # if (length(sp) > nmax) {
+        # ngram <- paste(sp[(length(sp) - nmax):length(sp)])
+    # }
+    # if (ngram %in% predMarks$hist) {
+    #     hist <- ngram
+    # } else {
+    #     hist <- "UNK"
+    # }
+    found <- FALSE
+    nlen <- length(sp)
+    while (nlen > 0 & !found) {
+        sp_slice <- sp[(length(sp) + 1 - nlen):length(sp)]
+        ngram <- Reduce(paste, sp_slice)
+        if (ngram %in% predMarks$hist) {
+            hist <- ngram
+            found <- TRUE
+        }
+        nlen <- nlen - 1
     }
-    if (ngram %in% predMarks$hist) {
-        hist <- ngram
-    } else {
-        hist <- "UNK"
-    }
+    if (!found) hist <- "UNK"
+    print(hist)
     # predMarks$`pred 1`
     # prediction <- predMarks[predMarks$hist == hist, "pred"]
     # if (prediction == "UNK") {
         # prediction <- predMarks[predMarks$hist == hist, "pred 2"]
     # }
-    prediction <- predMarks[predMarks$hist == hist, 2:6]
-    rownames(prediction) <- "row"
-    prediction <- prediction %>% 
+    pred <- predMarks[predMarks$hist == hist, 2:6]
+    for (c in colnames(pred)) {
+        pred[ , c] <- as.character(pred[ , c])
+    }
+    rownames(pred) <- "row"
+    pred <- pred %>% 
         select_if(. != "UNK")
+    pred <- unlist(pred)
+    # print(pred)
     # print(prediction)
-    prediction <- as.character(prediction)
-    # print(prediction)
+    if (hist == "UNK") hist <- "-"
+    prediction$word <- pred
+    prediction$hist <- hist
+    print(prediction)
     prediction
 }

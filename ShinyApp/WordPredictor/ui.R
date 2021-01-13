@@ -8,19 +8,24 @@
 #
 
 library(shiny)
+library(shinyjs)
+
 
 # Define UI for application that draws a histogram
 shinyUI(fluidPage(
-
+    useShinyjs(),
+    
     # Application title
     titlePanel("Prediction Algorithm"),
-
+    
     # Sidebar with a slider input for number of bins
     sidebarLayout(
         sidebarPanel(
-            textInput("ngram", "Type your n-gram here", "Hello"),
+            textInput("ngram", "Type your n-gram here", "It's a very"),
+            actionButton("reset", "Reset"),
             # verbatimTextOutput("prediction")
-            # textOutput("prediction")
+            # textOutput("npreds"),
+            uiOutput("predButtons"),
             fluidRow(
                 column(1,
                        tableOutput('prediction')
