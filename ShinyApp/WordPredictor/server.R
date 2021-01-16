@@ -11,6 +11,7 @@ library(shiny)
 library(shinyjs)
 library(dplyr)
 library(xtable)
+library(ggplot2)
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output, session) {
@@ -30,9 +31,10 @@ shinyServer(function(input, output, session) {
         local = TRUE
     )
     load("m.RData")
+    load("predMarks.RData")
     # print(head(m))
-    predMarks <- predMark("", rownames(m), m)
-    print(head(predMarks))
+    # predMarks <- predMark("", rownames(m), m)
+    # print(head(predMarks))
     # prediction <- renderTable({
     #     predictWord(predMarks, input$ngram)
     # })
@@ -42,19 +44,38 @@ shinyServer(function(input, output, session) {
         # paste(input$ngram, predictWord(predMarks, input$ngram), "<br>")
     # })
     predictions <- reactive({predictWord(predMarks, input$ngram)})
-    print(renderText({predictions()}))
+    # print(renderText({predictions()}))
     predictionsFrame <- function(ngram, predictions) {
         # print(predictions)
         df <- data.frame(input = ngram, prediction = predictions)
-        print(head(df))
+        # print(head(df))
         df
     }
-    print(renderText({predictions()$word}))
-    print(renderText({predictionsFrame(input$ngram, predictions()$word)}))
+    # print(renderText({predictions()$word}))
+    # print(renderText({predictionsFrame(input$ngram, predictions()$word)}))
     datar <- reactive({
         # predictionsFrame(input$ngram, predictions())
         predictionsFrame(predictions()$hist, predictions()$word)
     })
+    probs <- reactive({
+        if (length(datar()$input) > 0 & datar()$input[1] != "-") {
+            prob <- getProbs(predictions()$hist, predictions()$word, m)
+        }
+    })
+    plotWords <- reactive({
+        if (length(probs()$word) > 0) {
+            g <- probs() %>% 
+                ggplot() + 
+                geom_bar(aes(x = word, y = probs, fill = "blue"), stat = 'identity') + 
+                scale_y_continuous(labels = scales::percent) +
+                # ggtitle("Next Word Probabilities", subtitle = predictions()$hist) +
+                ggtitle("Next Word Probabilities") +
+                theme(legend.position = "none") +
+                theme(axis.text.x = element_text(face = "bold", size = 20))
+            g
+        }
+    })
+    output$plotWords <- renderPlot({plotWords()})
     output$prediction <- renderTable({datar()})
     npreds <- reactive({
         if (ncol(datar()) > 0) {
@@ -69,7 +90,10 @@ shinyServer(function(input, output, session) {
         for (i in 1:npreds()) {
             buttons[[i]] <- actionButton(
                 paste0("action", i), 
-                label = paste0(datar()[i, "prediction"])
+                label = paste0(datar()[i, "prediction"]),
+                style = "
+                    color: green;
+                "
             )
         }
         buttons
@@ -82,13 +106,22 @@ shinyServer(function(input, output, session) {
             observeEvent(input[[paste0("action", i)]], {
             # observeEvent(input[["action1"]], {
                 # input$ngram <- paste(input$ngram, "good")
-                print("Button", i)
+                # print("Button", i)
                 updateTextInput(session, "ngram", value = paste(input$ngram, datar()[i, "prediction"]))
             })
         })
     # })
     observeEvent(input$reset, {
-        print(input)
+        # print(input)
         reset("ngram")
+    })
+    observeEvent(input$delete, {
+        sp <- strsplit(input$ngram, " ")[[1]]
+        if (length(sp) == 1) {
+            rep <- ""
+        } else {
+            rep <- Reduce(paste, sp[1:length(sp) - 1])
+        }
+        updateTextInput(session, "ngram", value = rep)
     })
 })

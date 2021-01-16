@@ -40,7 +40,7 @@ predictWord <- function (predMarks, ngram) {
     ngram <- gsub("'", " ", ngram)
     nmax <- max(predMarks$len)
     sp <- strsplit(ngram, " ")[[1]]
-    print(sp)
+    # print(sp)
     # if (length(sp) > nmax) {
         # ngram <- paste(sp[(length(sp) - nmax):length(sp)])
     # }
@@ -61,7 +61,7 @@ predictWord <- function (predMarks, ngram) {
         nlen <- nlen - 1
     }
     if (!found) hist <- "UNK"
-    print(hist)
+    # print(hist)
     # predMarks$`pred 1`
     # prediction <- predMarks[predMarks$hist == hist, "pred"]
     # if (prediction == "UNK") {
@@ -80,6 +80,22 @@ predictWord <- function (predMarks, ngram) {
     if (hist == "UNK") hist <- "-"
     prediction$word <- pred
     prediction$hist <- hist
-    print(prediction)
+    # print(prediction)
     prediction
 }
+
+getProbs <- function (hist, word, m) {
+    frame <- data.frame(hist = hist, word = word)
+    frame$probs <- 0
+    for (i in 1:length(frame$hist)) {
+        # print(hist)
+        # print(word[[i]])
+        frame$probs[i] <- m[hist, word[[i]]]
+    }
+    frame$probs <- frame$probs/(sum(frame$probs))
+    frame <- frame %>% 
+            arrange(-probs) %>% 
+            mutate(word = factor(word, word))
+    frame
+}
+

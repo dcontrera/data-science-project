@@ -21,20 +21,32 @@ shinyUI(fluidPage(
     # Sidebar with a slider input for number of bins
     sidebarLayout(
         sidebarPanel(
-            textInput("ngram", "Type your n-gram here", "It's a very"),
-            actionButton("reset", "Reset"),
-            # verbatimTextOutput("prediction")
-            # textOutput("npreds"),
+            textInput("ngram", "Type your n-gram here", "It's a"),
+            h5("Choose the next word or keep typing"),
             uiOutput("predButtons"),
-            fluidRow(
-                column(1,
-                       tableOutput('prediction')
-                )
+            # br(),
+            h5("Reset the input panel or delete the last word"),
+            actionButton("reset", "Reset", 
+                style = "
+                    color: red;
+                "
+            ),
+            actionButton("delete", "Delete",
+                style = "
+                    color: blue;
+                "
             )
+            # ),
+            # br(),
+            # fluidRow(
+            #     column(1,
+            #            tableOutput('prediction')
+            #     )
+            # )
         ),
         # Show a plot of the generated distribution
         mainPanel(
-            # plotOutput("distPlot")
+            plotOutput("plotWords")
         )
     )
 ))
